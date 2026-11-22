@@ -29,71 +29,64 @@ pipeline {
             }
         }
 
-        stage('Validate Tools') {
+        stage('Validate Build Environment') {
             steps {
-                container('docker'){
-                sh '''
-                    echo "Checking Docker connectivity..."
-                    docker version
-                    docker info
-
-                    echo "Checking build environment..."
-                    git --version
-                '''
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                container('docker'){
-                sh '''
-                    docker build --pull \
-                      -t "$DOCKERHUB_REPOSITORY:latest" \
-                      -t "$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
-                      .
-                '''
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                container('docker'){
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_TOKEN'
-                    )
-                ]) {
+                container('kaniko') {
                     sh '''
-                        set +x
+                        echo "Checking Kaniko executor..."
+                        /kaniko/executor version
 
-                        echo "$DOCKER_TOKEN" | docker login \
-                          --username "$DOCKER_USER" \
-                          --password-stdin
+                        echo "Checking build context..."
+                        ls -la "$WORKSPACE"
 
-                        docker push "$DOCKERHUB_REPOSITORY:latest"
-
-                        docker push "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
-
-                        docker logout
+                        echo "Checking Dockerfile..."
+                        test -f "$WORKSPACE/Dockerfile"
                     '''
                 }
-              }
+            }
+        }
+
+        stage('Build and Push Image') {
+            steps {
+                container('kaniko') {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'dockerhub-creds',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_TOKEN'
+                        )
+                    ]) {
+                        sh '''
+                            set +x
+
+                            mkdir -p /kaniko/.docker
+
+                            AUTH=$(printf '%s' "$DOCKER_USER:$DOCKER_TOKEN" | base64 | tr -d '\\n')
+
+                            printf '{"auths":{"https://index.docker.io/v1/":{"username":"%s","password":"%s","auth":"%s"}}}' \
+                                "$DOCKER_USER" "$DOCKER_TOKEN" "$AUTH" \
+                                > /kaniko/.docker/config.json
+
+                            echo "Building and pushing image..."
+
+                            /kaniko/executor \
+                                --context="$WORKSPACE" \
+                                --dockerfile="$WORKSPACE/Dockerfile" \
+                                --destination="$DOCKERHUB_REPOSITORY:latest" \
+                                --destination="$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
+                                --cache=true
+
+                            rm -f /kaniko/.docker/config.json
+                        '''
+                    }
+                }
             }
         }
     }
 
     post {
         always {
-            sh '''
-                docker image rm \
-                  "$DOCKERHUB_REPOSITORY:latest" \
-                  "$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
-                  2>/dev/null || true
-            '''
+            echo 'Jenkins DevOps agent image pipeline completed.'
         }
     }
 }
