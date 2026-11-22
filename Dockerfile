@@ -1,7 +1,7 @@
 # ==================================================
 # Jenkins DevOps Agent (with Buildah)
 # ==================================================
-FROM jenkins/inbound-agent:jdk21
+FROM docker.io/jenkins/inbound-agent:jdk21
 
 USER root
 
