@@ -59,7 +59,7 @@ pipeline {
                             set -euo pipefail
                             set +x
 
-                            # Create temp auth file initialized with valid empty JSON
+                            export STORAGE_DRIVER=vfs
                             export REGISTRY_AUTH_FILE=$(mktemp)
                             printf '{}' > "$REGISTRY_AUTH_FILE"
                             trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
@@ -72,6 +72,7 @@ pipeline {
 
                             echo "Building image..."
                             buildah bud \
+                                --storage-driver=vfs \
                                 --layers \
                                 -f "$WORKSPACE/Dockerfile" \
                                 -t "$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
@@ -79,9 +80,10 @@ pipeline {
                                 "$WORKSPACE"
 
                             echo "Pushing image tags..."
-                            buildah push "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
-                            buildah push "$DOCKERHUB_REPOSITORY:latest"
+                            buildah push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
+                            buildah push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:latest"
                         '''
+
 
                     }
                 }
