@@ -93,7 +93,8 @@ RUN set -eux; \
     esac; \
     curl -fsSLo /tmp/kubectl \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl"; \
-    chmod +x /tmp/kubectl
+    chmod +x /tmp/kubectl; \
+    mv /tmp/kubectl /usr/local/bin/kubectl
 
 
 # ==================================================
