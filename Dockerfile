@@ -32,11 +32,14 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Store executor outside /kaniko so Kaniko's build snapshot includes it
+# Store executor outside /kaniko so Kaniko's build snapshot includes it,
+# and expose a `kaniko` wrapper command on PATH.
 RUN mkdir -p /opt/kaniko
 COPY --from=kaniko /tmp/kaniko-files/executor /opt/kaniko/executor
 RUN chmod 0755 /opt/kaniko/executor && \
-    chown -R jenkins:jenkins /opt/kaniko
+    chown -R jenkins:jenkins /opt/kaniko && \
+    printf '#!/bin/sh\nexec /opt/kaniko/executor "$@"\n' > /usr/local/bin/kaniko && \
+    chmod 0755 /usr/local/bin/kaniko
 
 ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kaniko"
 ENV SSL_CERT_DIR="/etc/ssl/certs"
@@ -88,7 +91,8 @@ RUN set -eux; \
     grype version; \
     cosign version; \
     git --version; \
-    /opt/kaniko/executor version
+    /opt/kaniko/executor version; \
+    kaniko version
 
 WORKDIR /home/jenkins/agent
 USER jenkins
