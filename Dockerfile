@@ -1,32 +1,31 @@
+FROM jenkins/inbound-agent:jdk21
 
-FROM alpine:3.21
+USER root
 
 ARG TERRAFORM_VERSION=1.11.4
 ARG KUBECTL_VERSION=v1.32.3
-ARG ANSIBLE_CORE_VERSION=2.18.3
 
-# Install common utilities and Docker CLI
-RUN apk add --no-cache \
-    bash \
-    ca-certificates \
-    curl \
-    git \
-    jq \
-    openssh-client \
-    python3 \
-    py3-pip \
-    py3-virtualenv \
-    unzip \
-    docker-cli \
-    && update-ca-certificates
+# Install common utilities
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        jq \
+        openssh-client \
+        unzip \
+        tar \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
 RUN set -eux; \
-    arch="$(apk --print-arch)"; \
+    arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-      x86_64) tf_arch="amd64" ;; \
-      aarch64) tf_arch="arm64" ;; \
-      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+      amd64) tf_arch="amd64" ;; \
+      arm64) tf_arch="arm64" ;; \
+      *) exit 1 ;; \
     esac; \
     curl -fsSLo /tmp/terraform.zip \
       "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${tf_arch}.zip"; \
@@ -35,31 +34,40 @@ RUN set -eux; \
 
 # Install kubectl
 RUN set -eux; \
-    arch="$(apk --print-arch)"; \
+    arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-      x86_64) kubectl_arch="amd64" ;; \
-      aarch64) kubectl_arch="arm64" ;; \
-      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+      amd64) kubectl_arch="amd64" ;; \
+      arm64) kubectl_arch="arm64" ;; \
+      *) exit 1 ;; \
     esac; \
     curl -fsSLo /usr/local/bin/kubectl \
       "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl"; \
     chmod +x /usr/local/bin/kubectl
 
-# Install Ansible in an isolated Python virtual environment
-RUN python3 -m venv /opt/ansible \
-    && /opt/ansible/bin/pip install --no-cache-dir \
-       "ansible-core==${ANSIBLE_CORE_VERSION}" \
-    && ln -s /opt/ansible/bin/ansible /usr/local/bin/ansible \
-    && ln -s /opt/ansible/bin/ansible-playbook /usr/local/bin/ansible-playbook
+# Install Kaniko executor
+ARG KANIKO_VERSION=latest
 
-ENV PATH="/opt/ansible/bin:${PATH}"
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) kaniko_arch="amd64" ;; \
+      arm64) kaniko_arch="arm64" ;; \
+      *) exit 1 ;; \
+    esac; \
+    mkdir -p /kaniko/.docker; \
+    curl -fsSL \
+      "https://github.com/osscontainertools/kaniko/releases/latest/download/executor-linux-${kaniko_arch}" \
+      -o /kaniko/executor; \
+    chmod +x /kaniko/executor
 
-# Verify installations
-RUN docker --version \
-    && terraform version \
-    && kubectl version --client \
-    && ansible --version
+ENV PATH="/kaniko:/usr/local/bin:${PATH}"
 
-WORKDIR /workspace
+# Verify tools
+RUN terraform version && \
+    kubectl version --client && \
+    git --version && \
+    java -version
 
-CMD ["bash"]
+WORKDIR /home/jenkins/agent
+
+USER jenkins
