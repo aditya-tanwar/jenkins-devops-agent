@@ -1,5 +1,5 @@
 # ==================================================
-# Jenkins DevOps Agent (with Buildah)
+# Jenkins DevOps Agent (with Podman)
 # ==================================================
 FROM docker.io/jenkins/inbound-agent:jdk21
 
@@ -12,7 +12,6 @@ ARG COSIGN_VERSION=v3.0.5
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
-        buildah \
         ca-certificates \
         coreutils \
         curl \
@@ -20,6 +19,8 @@ RUN apt-get update && \
         git \
         jq \
         openssh-client \
+        podman \
+        slirp4netns \
         tar \
         uidmap \
         unzip \
@@ -86,7 +87,7 @@ RUN set -eux; \
     grype version; \
     cosign version; \
     git --version; \
-    buildah --version
+    podman --version
 
 WORKDIR /home/jenkins/agent
 USER jenkins

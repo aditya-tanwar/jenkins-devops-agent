@@ -30,10 +30,10 @@ pipeline {
 
         stage('Validate Build Environment') {
             steps {
-                container('buildah') {
+                container('podman') {
                     sh '''
-                        echo "Checking Buildah..."
-                        buildah --version
+                        echo "Checking Podman..."
+                        podman --version
 
                         echo "Checking build context..."
                         ls -la "$WORKSPACE"
@@ -47,7 +47,7 @@ pipeline {
 
         stage('Build and Push Image') {
             steps {
-                container('buildah') {
+                container('podman') {
                     withCredentials([
                         usernamePassword(
                             credentialsId: "${DOCKERHUB_CREDENTIALS}",
@@ -65,13 +65,13 @@ pipeline {
                             trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
 
                             echo "Logging into Docker Hub..."
-                            printf '%s' "$DOCKER_TOKEN" | buildah login \
+                            printf '%s' "$DOCKER_TOKEN" | podman login \
                                 --username "$DOCKER_USER" \
                                 --password-stdin \
                                 docker.io
 
                             echo "Building image..."
-                            buildah bud \
+                            podman build \
                                 --storage-driver=vfs \
                                 --layers \
                                 -f "$WORKSPACE/Dockerfile" \
@@ -80,11 +80,9 @@ pipeline {
                                 "$WORKSPACE"
 
                             echo "Pushing image tags..."
-                            buildah push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
-                            buildah push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:latest"
+                            podman push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
+                            podman push --storage-driver=vfs "$DOCKERHUB_REPOSITORY:latest"
                         '''
-
-
                     }
                 }
             }
