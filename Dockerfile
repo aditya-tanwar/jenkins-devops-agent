@@ -3,12 +3,9 @@
 # ==================================================
 FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
 
-# Copy files outside Kaniko's reserved directory
-# to avoid multi-stage COPY conflicts.
 RUN mkdir -p /tmp/kaniko-files && \
     cp /kaniko/executor /tmp/kaniko-files/executor && \
-    cp -a /kaniko/ssl/certs /tmp/kaniko-files/certs && \
-    cp -a /busybox /tmp/kaniko-files/busybox
+    cp -a /kaniko/ssl/certs /tmp/kaniko-files/certs
 
 
 # ==================================================
@@ -22,9 +19,6 @@ ARG TERRAFORM_VERSION=1.11.4
 ARG KUBECTL_VERSION=v1.32.3
 ARG COSIGN_VERSION=v3.0.5
 
-# ==================================================
-# Install system dependencies
-# ==================================================
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
@@ -39,34 +33,19 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-
-# ==================================================
-# Install Kaniko in the SAME Jenkins agent container
-# ==================================================
-RUN mkdir -p \
-    /kaniko/.docker \
-    /kaniko/ssl/certs \
-    /busybox
+RUN mkdir -p /kaniko/.docker /kaniko/ssl/certs
 
 COPY --from=kaniko /tmp/kaniko-files/executor /kaniko/executor
-COPY --from=kaniko /tmp/kaniko-files/certs/ /kaniko/ssl/certs/
-COPY --from=kaniko /tmp/kaniko-files/busybox/ /busybox/
+COPY --from=kaniko /tmp/kaniko-files/certs /kaniko/ssl/certs
 
 RUN chmod +x /kaniko/executor && \
-    chmod -R a+rX /kaniko /busybox && \
-    chown -R jenkins:jenkins /kaniko /busybox
+    chmod -R a+rX /kaniko && \
+    chown -R jenkins:jenkins /kaniko
 
-# Preserve Java from the Jenkins inbound-agent base image.
-# Keep Debian utilities ahead of BusyBox to avoid command conflicts.
-ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko:/busybox"
-
+ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko"
 ENV DOCKER_CONFIG="/kaniko/.docker/"
 ENV SSL_CERT_DIR="/kaniko/ssl/certs"
 
-
-# ==================================================
-# Install Terraform
-# ==================================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -80,10 +59,6 @@ RUN set -eux; \
     chmod +x /usr/local/bin/terraform; \
     rm -f /tmp/terraform.zip
 
-
-# ==================================================
-# Install kubectl
-# ==================================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -96,10 +71,6 @@ RUN set -eux; \
     chmod +x /tmp/kubectl; \
     mv /tmp/kubectl /usr/local/bin/kubectl
 
-
-# ==================================================
-# Install Syft, Grype, and Cosign
-# ==================================================
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -113,36 +84,16 @@ RUN set -eux; \
         "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${go_arch}"; \
     chmod +x /usr/local/bin/cosign
 
-
-# ==================================================
-# Verify installed tools
-# ==================================================
 RUN set -eux; \
-    echo "Architecture:"; \
     dpkg --print-architecture; \
-    echo "Java:"; \
-    echo "JAVA_HOME=${JAVA_HOME}"; \
-    command -v java; \
     java -version; \
-    echo "Terraform:"; \
     terraform version; \
-    echo "kubectl:"; \
     kubectl version --client; \
-    echo "Syft:"; \
     syft version; \
-    echo "Grype:"; \
     grype version; \
-    echo "Cosign:"; \
     cosign version; \
-    echo "Git:"; \
     git --version; \
-    echo "Kaniko:"; \
     /kaniko/executor version
 
-
-# ==================================================
-# Jenkins agent configuration
-# ==================================================
 WORKDIR /home/jenkins/agent
-
 USER jenkins
