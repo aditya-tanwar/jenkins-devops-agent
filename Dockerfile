@@ -4,9 +4,7 @@
 # ==================================================
 FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
 
-# Kaniko uses /kaniko internally.
-# Stage its files under /tmp so the outer Kaniko builder
-# can save them for the multi-stage COPY instructions.
+# Copy Kaniko files outside its reserved directory.
 RUN mkdir -p /tmp/kaniko-files && \
     cp /kaniko/executor /tmp/kaniko-files/executor && \
     cp -a /kaniko/ssl/certs /tmp/kaniko-files/certs && \
@@ -57,7 +55,9 @@ RUN chmod +x /kaniko/executor && \
     chmod -R a+rX /kaniko /busybox && \
     chown -R jenkins:jenkins /kaniko /busybox
 
-ENV PATH="/kaniko:/busybox:/usr/local/bin:${PATH}"
+# System binaries must take priority over BusyBox applets.
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko:/busybox"
+
 ENV DOCKER_CONFIG="/kaniko/.docker/"
 ENV SSL_CERT_DIR="/kaniko/ssl/certs"
 
@@ -75,6 +75,7 @@ RUN set -eux; \
     curl -fsSLo /tmp/terraform.zip \
         "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${tf_arch}.zip"; \
     unzip /tmp/terraform.zip -d /usr/local/bin; \
+    chmod +x /usr/local/bin/terraform; \
     rm -f /tmp/terraform.zip
 
 
@@ -96,10 +97,23 @@ RUN set -eux; \
 # ==================================================
 # Verify installed tools
 # ==================================================
-RUN terraform version && \
-    kubectl version --client && \
-    git --version && \
-    java -version && \
+RUN set -eux; \
+    echo "Architecture:"; \
+    dpkg --print-architecture; \
+    echo "Tool locations:"; \
+    command -v dpkg; \
+    command -v curl; \
+    command -v terraform; \
+    command -v kubectl; \
+    echo "Terraform:"; \
+    terraform version; \
+    echo "kubectl:"; \
+    kubectl version --client; \
+    echo "Git:"; \
+    git --version; \
+    echo "Java:"; \
+    java -version; \
+    echo "Kaniko:"; \
     /kaniko/executor version
 
 
