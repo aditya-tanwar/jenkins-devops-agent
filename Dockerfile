@@ -1,8 +1,12 @@
 
+# --------------------------------------------------
 # Stage 1: Kaniko source image
+# --------------------------------------------------
 FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
 
-# Stage 2: Jenkins DevOps agent
+# --------------------------------------------------
+# Stage 2: Jenkins DevOps Agent
+# --------------------------------------------------
 FROM jenkins/inbound-agent:jdk21
 
 USER root
@@ -10,7 +14,9 @@ USER root
 ARG TERRAFORM_VERSION=1.11.4
 ARG KUBECTL_VERSION=v1.32.3
 
-# Install common DevOps utilities
+# --------------------------------------------------
+# Install system utilities
+# --------------------------------------------------
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
@@ -25,15 +31,30 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Kaniko executor and its supporting files
-COPY --from=kaniko /kaniko /kaniko
-COPY --from=kaniko /busybox /busybox
+# --------------------------------------------------
+# Install Kaniko from its official fork image
+# --------------------------------------------------
+RUN mkdir -p \
+    /kaniko/.docker \
+    /kaniko/ssl/certs \
+    /busybox
+
+COPY --from=kaniko /kaniko/executor /kaniko/executor
+COPY --from=kaniko /kaniko/ssl/certs/ /kaniko/ssl/certs/
+COPY --from=kaniko /busybox/ /busybox/
+
+# Copy Kaniko supporting files and set permissions
+RUN chmod +x /kaniko/executor && \
+    chmod -R a+rX /kaniko /busybox && \
+    chown -R jenkins:jenkins /kaniko /busybox
 
 ENV PATH="/kaniko:/busybox:/usr/local/bin:${PATH}"
 ENV DOCKER_CONFIG="/kaniko/.docker/"
 ENV SSL_CERT_DIR="/kaniko/ssl/certs"
 
+# --------------------------------------------------
 # Install Terraform
+# --------------------------------------------------
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -46,7 +67,9 @@ RUN set -eux; \
     unzip /tmp/terraform.zip -d /usr/local/bin; \
     rm -f /tmp/terraform.zip
 
+# --------------------------------------------------
 # Install kubectl
+# --------------------------------------------------
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
@@ -58,14 +81,18 @@ RUN set -eux; \
       "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl"; \
     chmod +x /usr/local/bin/kubectl
 
-# Verify installed tools
-RUN /kaniko/executor version \
-    && terraform version \
-    && kubectl version --client \
-    && git --version \
-    && java -version
+# --------------------------------------------------
+# Verify installations
+# --------------------------------------------------
+RUN /kaniko/executor version && \
+    terraform version && \
+    kubectl version --client && \
+    git --version && \
+    java -version
 
-# Jenkins workspace
+# --------------------------------------------------
+# Jenkins agent configuration
+# --------------------------------------------------
 WORKDIR /home/jenkins/agent
 
 USER jenkins
