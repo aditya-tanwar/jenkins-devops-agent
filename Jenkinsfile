@@ -31,6 +31,7 @@ pipeline {
 
         stage('Validate Tools') {
             steps {
+                container('docker'){
                 sh '''
                     echo "Checking Docker connectivity..."
                     docker version
@@ -39,22 +40,26 @@ pipeline {
                     echo "Checking build environment..."
                     git --version
                 '''
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
+                container('docker'){
                 sh '''
                     docker build --pull \
                       -t "$DOCKERHUB_REPOSITORY:latest" \
                       -t "$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
                       .
                 '''
+                }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
+                container('docker'){
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'dockerhub-creds',
@@ -76,6 +81,7 @@ pipeline {
                         docker logout
                     '''
                 }
+              }
             }
         }
     }
