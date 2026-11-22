@@ -59,8 +59,9 @@ pipeline {
                             set -euo pipefail
                             set +x
 
-                            # Use an isolated auth file so credentials don't persist in the shared pod
+                            # Create temp auth file initialized with valid empty JSON
                             export REGISTRY_AUTH_FILE=$(mktemp)
+                            printf '{}' > "$REGISTRY_AUTH_FILE"
                             trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
 
                             echo "Logging into Docker Hub..."
@@ -81,6 +82,7 @@ pipeline {
                             buildah push "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
                             buildah push "$DOCKERHUB_REPOSITORY:latest"
                         '''
+
                     }
                 }
             }
