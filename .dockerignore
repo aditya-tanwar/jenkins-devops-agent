@@ -1,0 +1,11 @@
+
+.git
+.gitignore
+README.md
+Jenkinsfile
+.dockerignore
+*.log
+.DS_Store
+.terraform/
+*.tfstate
+*.tfstate.*
