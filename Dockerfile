@@ -1,11 +1,10 @@
 # ==================================================
-# Stage 1: Extract Kaniko files
+# Stage 1: Extract Kaniko binary
 # ==================================================
 FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
 
 RUN mkdir -p /tmp/kaniko-files && \
-    cp /kaniko/executor /tmp/kaniko-files/executor && \
-    cp -a /kaniko/ssl/certs /tmp/kaniko-files/certs
+    cp /kaniko/executor /tmp/kaniko-files/executor
 
 
 # ==================================================
@@ -33,18 +32,14 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /kaniko/.docker /kaniko/ssl/certs
+# Store executor outside /kaniko so Kaniko's build snapshot includes it
+RUN mkdir -p /opt/kaniko
+COPY --from=kaniko /tmp/kaniko-files/executor /opt/kaniko/executor
+RUN chmod 0755 /opt/kaniko/executor && \
+    chown -R jenkins:jenkins /opt/kaniko
 
-COPY --from=kaniko /tmp/kaniko-files/executor /kaniko/executor
-COPY --from=kaniko /tmp/kaniko-files/certs /kaniko/ssl/certs
-
-RUN chmod +x /kaniko/executor && \
-    chmod -R a+rX /kaniko && \
-    chown -R jenkins:jenkins /kaniko
-
-ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko"
-ENV DOCKER_CONFIG="/kaniko/.docker/"
-ENV SSL_CERT_DIR="/kaniko/ssl/certs"
+ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kaniko"
+ENV SSL_CERT_DIR="/etc/ssl/certs"
 
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -93,7 +88,7 @@ RUN set -eux; \
     grype version; \
     cosign version; \
     git --version; \
-    /kaniko/executor version
+    /opt/kaniko/executor version
 
 WORKDIR /home/jenkins/agent
 USER jenkins
