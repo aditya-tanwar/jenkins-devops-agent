@@ -1,4 +1,3 @@
-
 pipeline {
     agent {
         label 'agent-builder'
@@ -31,10 +30,10 @@ pipeline {
 
         stage('Validate Build Environment') {
             steps {
-                container('kaniko') {
+                container('buildah') {
                     sh '''
-                        echo "Checking Kaniko executor..."
-                        /kaniko/executor version
+                        echo "Checking Buildah..."
+                        buildah --version
 
                         echo "Checking build context..."
                         ls -la "$WORKSPACE"
@@ -48,35 +47,39 @@ pipeline {
 
         stage('Build and Push Image') {
             steps {
-                container('kaniko') {
+                container('buildah') {
                     withCredentials([
                         usernamePassword(
-                            credentialsId: 'dockerhub-creds',
+                            credentialsId: "${DOCKERHUB_CREDENTIALS}",
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_TOKEN'
                         )
                     ]) {
                         sh '''
+                            set -euo pipefail
                             set +x
 
-                            mkdir -p /kaniko/.docker
+                            # Use an isolated auth file so credentials don't persist in the shared pod
+                            export REGISTRY_AUTH_FILE=$(mktemp)
+                            trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
 
-                            AUTH=$(printf '%s' "$DOCKER_USER:$DOCKER_TOKEN" | base64 | tr -d '\\n')
+                            echo "Logging into Docker Hub..."
+                            printf '%s' "$DOCKER_TOKEN" | buildah login \
+                                --username "$DOCKER_USER" \
+                                --password-stdin \
+                                docker.io
 
-                            printf '{"auths":{"https://index.docker.io/v1/":{"username":"%s","password":"%s","auth":"%s"}}}' \
-                                "$DOCKER_USER" "$DOCKER_TOKEN" "$AUTH" \
-                                > /kaniko/.docker/config.json
+                            echo "Building image..."
+                            buildah bud \
+                                --layers \
+                                -f "$WORKSPACE/Dockerfile" \
+                                -t "$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
+                                -t "$DOCKERHUB_REPOSITORY:latest" \
+                                "$WORKSPACE"
 
-                            echo "Building and pushing image..."
-
-                            /kaniko/executor \
-                                --context="$WORKSPACE" \
-                                --dockerfile="$WORKSPACE/Dockerfile" \
-                                --destination="$DOCKERHUB_REPOSITORY:latest" \
-                                --destination="$DOCKERHUB_REPOSITORY:$IMAGE_TAG" \
-                                --cache=true
-
-                            rm -f /kaniko/.docker/config.json
+                            echo "Pushing image tags..."
+                            buildah push "$DOCKERHUB_REPOSITORY:$IMAGE_TAG"
+                            buildah push "$DOCKERHUB_REPOSITORY:latest"
                         '''
                     }
                 }
