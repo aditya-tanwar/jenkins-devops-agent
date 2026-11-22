@@ -1,14 +1,5 @@
 # ==================================================
-# Stage 1: Extract Kaniko binary
-# ==================================================
-FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
-
-RUN mkdir -p /tmp/kaniko-files && \
-    cp /kaniko/executor /tmp/kaniko-files/executor
-
-
-# ==================================================
-# Stage 2: Jenkins DevOps Agent
+# Jenkins DevOps Agent (with Buildah)
 # ==================================================
 FROM jenkins/inbound-agent:jdk21
 
@@ -21,29 +12,32 @@ ARG COSIGN_VERSION=v3.0.5
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
+        buildah \
         ca-certificates \
         coreutils \
         curl \
+        fuse-overlayfs \
         git \
         jq \
         openssh-client \
-        unzip \
         tar \
+        uidmap \
+        unzip \
     && update-ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Store executor outside /kaniko so Kaniko's build snapshot includes it,
-# and expose a `kaniko` wrapper command on PATH.
-RUN mkdir -p /opt/kaniko
-COPY --from=kaniko /tmp/kaniko-files/executor /opt/kaniko/executor
-RUN chmod 0755 /opt/kaniko/executor && \
-    chown -R jenkins:jenkins /opt/kaniko && \
-    printf '#!/bin/sh\nexec /opt/kaniko/executor "$@"\n' > /usr/local/bin/kaniko && \
-    chmod 0755 /usr/local/bin/kaniko
+# Configure rootless user namespaces and container storage for the jenkins user
+RUN echo "jenkins:100000:65536" >> /etc/subuid && \
+    echo "jenkins:100000:65536" >> /etc/subgid && \
+    mkdir -p /home/jenkins/.config/containers && \
+    printf '[storage]\ndriver = "overlay"\nrunroot = "/tmp/containers-runroot"\ngraphroot = "/home/jenkins/.local/share/containers/storage"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
+        > /home/jenkins/.config/containers/storage.conf && \
+    chown -R jenkins:jenkins /home/jenkins/.config
 
-ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/kaniko"
+ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV SSL_CERT_DIR="/etc/ssl/certs"
+ENV _CONTAINERS_USERNS_CONFIGURED=""
 
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -92,7 +86,7 @@ RUN set -eux; \
     grype version; \
     cosign version; \
     git --version; \
-    kaniko version
+    buildah --version
 
 WORKDIR /home/jenkins/agent
 USER jenkins
