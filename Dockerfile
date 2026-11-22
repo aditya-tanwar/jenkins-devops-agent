@@ -1,4 +1,3 @@
-
 # ==================================================
 # Stage 1: Extract Kaniko files
 # ==================================================
@@ -21,6 +20,7 @@ USER root
 
 ARG TERRAFORM_VERSION=1.11.4
 ARG KUBECTL_VERSION=v1.32.3
+ARG COSIGN_VERSION=v3.0.5
 
 # ==================================================
 # Install system dependencies
@@ -91,9 +91,26 @@ RUN set -eux; \
         arm64) kubectl_arch="arm64" ;; \
         *) echo "Unsupported architecture: $arch"; exit 1 ;; \
     esac; \
-    curl -fsSLo /usr/local/bin/kubectl \
+    curl -fsSLo /tmp/kubectl \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl"; \
-    chmod +x /usr/local/bin/kubectl
+    chmod +x /tmp/kubectl
+
+
+# ==================================================
+# Install Syft, Grype, and Cosign
+# ==================================================
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) go_arch="amd64" ;; \
+        arm64) go_arch="arm64" ;; \
+        *) echo "Unsupported architecture: $arch"; exit 1 ;; \
+    esac; \
+    curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin; \
+    curl -sSfL https://get.anchore.io/grype | sh -s -- -b /usr/local/bin; \
+    curl -fsSLo /usr/local/bin/cosign \
+        "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${go_arch}"; \
+    chmod +x /usr/local/bin/cosign
 
 
 # ==================================================
@@ -110,6 +127,12 @@ RUN set -eux; \
     terraform version; \
     echo "kubectl:"; \
     kubectl version --client; \
+    echo "Syft:"; \
+    syft version; \
+    echo "Grype:"; \
+    grype version; \
+    echo "Cosign:"; \
+    cosign version; \
     echo "Git:"; \
     git --version; \
     echo "Kaniko:"; \
