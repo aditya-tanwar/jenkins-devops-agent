@@ -22,6 +22,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
+        coreutils \
         curl \
         git \
         jq \
@@ -91,7 +92,6 @@ RUN set -eux; \
     grype version; \
     cosign version; \
     git --version; \
-    /opt/kaniko/executor version; \
     kaniko version
 
 WORKDIR /home/jenkins/agent
