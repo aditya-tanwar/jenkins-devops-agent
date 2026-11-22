@@ -4,7 +4,8 @@
 # ==================================================
 FROM ghcr.io/osscontainertools/kaniko:debug AS kaniko
 
-# Copy Kaniko files outside its reserved directory.
+# Copy files outside Kaniko's reserved directory
+# to avoid multi-stage COPY conflicts.
 RUN mkdir -p /tmp/kaniko-files && \
     cp /kaniko/executor /tmp/kaniko-files/executor && \
     cp -a /kaniko/ssl/certs /tmp/kaniko-files/certs && \
@@ -55,8 +56,9 @@ RUN chmod +x /kaniko/executor && \
     chmod -R a+rX /kaniko /busybox && \
     chown -R jenkins:jenkins /kaniko /busybox
 
-# System binaries must take priority over BusyBox applets.
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko:/busybox"
+# Preserve Java from the Jenkins inbound-agent base image.
+# Keep Debian utilities ahead of BusyBox to avoid command conflicts.
+ENV PATH="${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/kaniko:/busybox"
 
 ENV DOCKER_CONFIG="/kaniko/.docker/"
 ENV SSL_CERT_DIR="/kaniko/ssl/certs"
@@ -100,19 +102,16 @@ RUN set -eux; \
 RUN set -eux; \
     echo "Architecture:"; \
     dpkg --print-architecture; \
-    echo "Tool locations:"; \
-    command -v dpkg; \
-    command -v curl; \
-    command -v terraform; \
-    command -v kubectl; \
+    echo "Java:"; \
+    echo "JAVA_HOME=${JAVA_HOME}"; \
+    command -v java; \
+    java -version; \
     echo "Terraform:"; \
     terraform version; \
     echo "kubectl:"; \
     kubectl version --client; \
     echo "Git:"; \
     git --version; \
-    echo "Java:"; \
-    java -version; \
     echo "Kaniko:"; \
     /kaniko/executor version
 
